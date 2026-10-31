@@ -1,0 +1,13 @@
+{
+  "id": "karstenkuhnke/prospector-sft1-t4patch-03",
+  "title": "prospector-sft1-t4patch-03",
+  "code_file": "prospector_t4patch_smoke.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": []
+}

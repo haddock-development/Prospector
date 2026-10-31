@@ -68,7 +68,7 @@ SFT_CONFIG_KEYS = frozenset({
     "grad_accum", "gradient_checkpointing", "logging_steps",
     "lora_alpha", "lora_dropout", "lora_r", "lora_target_modules", "lr",
     "matmul_precision", "max_length", "max_steps", "model_dtype", "output_dir",
-    "save_steps", "save_strategy", "seed",
+    "save_steps", "save_strategy", "seed", "use_liger_kernel", "amp",
 })
 SFT_RESOLVED_KEYS = frozenset({"base_model", "dataset", "output_dir"})
 
@@ -156,6 +156,10 @@ def run_sft(config: dict) -> Path:
         bias="none",
         task_type="CAUSAL_LM",
     )
+    if dtype is torch.float16:
+        for m in model.modules():
+            if isinstance(m, (torch.nn.RMSNorm, torch.nn.LayerNorm)):
+                m.to(torch.float32)
     model = get_peft_model(model, lora)
     model.print_trainable_parameters()
 
@@ -167,8 +171,6 @@ def run_sft(config: dict) -> Path:
         learning_rate=float(config.get("lr", 1e-4)),
         lr_scheduler_type="cosine",
         warmup_steps=SHARED["warmup_ratio"],   # below 1: a ratio of the run's steps
-        bf16=use_bf16 and dtype is torch.bfloat16,
-        fp16=(not use_bf16) and dtype is torch.float16,
         gradient_checkpointing=config.get("gradient_checkpointing", SHARED["gradient_checkpointing"]),
         # PEFT + checkpointing wants the non-reentrant path; the reentrant one
         # can drop grads on inputs that never required them.
@@ -178,6 +180,12 @@ def run_sft(config: dict) -> Path:
         save_strategy=config.get("save_strategy", "epoch"),
         save_steps=int(config.get("save_steps", 500)),
         report_to=[],
+        # T4-patch: liger fused linear cross-entropy (kein fp32-Logit-
+        # Materialisierung) + optionaler AMP-Modus ("fp16"|"bf16"):
+        # fp32 Master-Weights, reduced-precision Matmuls via Autocast.
+        use_liger_kernel=bool(config.get("use_liger_kernel", False)),
+        bf16=str(config.get("amp", "")) == "bf16" and use_bf16,
+        fp16=str(config.get("amp", "")) == "fp16",
         seed=int(config.get("seed", SHARED["seed"])),
     )
     trainer = Trainer(
